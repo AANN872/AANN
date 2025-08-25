@@ -1,0 +1,630 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+
+local Insert = require(ServerStorage.Modules:WaitForChild("Insert"))
+local SetProperties = require(ServerStorage.Modules:WaitForChild("SetProperties"))
+local Numbers = require(ReplicatedStorage.Modules:WaitForChild("Numbers"))
+local Things = require(ReplicatedStorage.Configuration.Modules:WaitForChild("Things"))
+local Mutations = require(ReplicatedStorage.Configuration.Modules:WaitForChild("Mutations"))
+local Rarities = require(ReplicatedStorage.Configuration.Modules:WaitForChild("Rarities"))
+
+local AddThingEvent = ServerStorage.Events:WaitForChild("AddThing")
+local NotificationEvent = ReplicatedStorage.Events:WaitForChild("Notification")
+local Waypoints = workspace:WaitForChild("Waypoints")
+
+local ThingData = {}
+local ForcedSpawn = nil
+local WalkSpeed = 13 -- CHANGE WALKSPEED HERE
+
+-- FUNCIÓN MEJORADA CON VALIDACIONES
+local function GetRandomRarity()
+    local UsedRarities = {}
+    
+    -- Validar que Things y Rarities existen
+    if not Things or type(Things) ~= "table" then
+        warn("Things module not loaded properly or is not a table")
+        return "Common" -- valor por defecto
+    end
+    
+    if not Rarities or type(Rarities) ~= "table" then
+        warn("Rarities module not loaded properly or is not a table")
+        return "Common" -- valor por defecto
+    end
+    
+    -- Validar cada configuración en Things
+    for _, Configuration in pairs(Things) do
+        if Configuration and type(Configuration) == "table" and Configuration.Rarity then
+            local Rarity = Configuration.Rarity
+            if Rarities[Rarity] then
+                UsedRarities[Rarity] = true
+            end
+        else
+            warn("Invalid configuration found in Things:", Configuration)
+        end
+    end
+    
+    -- Calcular total de probabilidades
+    local Total = 0
+    for Rarity, Data in pairs(Rarities) do
+        if UsedRarities[Rarity] and Data and type(Data) == "table" and Data.Chance then
+            Total = Total + Data.Chance
+        end
+    end
+    
+    if Total == 0 then
+        warn("No valid rarities found, returning Common")
+        return "Common"
+    end
+    
+    -- Generar número aleatorio y seleccionar rareza
+    local Roll = math.random() * Total
+    local Sum = 0
+    
+    for Rarity, Data in pairs(Rarities) do
+        if UsedRarities[Rarity] and Data and type(Data) == "table" and Data.Chance then
+            Sum = Sum + Data.Chance
+            if Roll <= Sum then
+                return Rarity
+            end
+        end
+    end
+    
+    -- Fallback por si algo sale mal
+    warn("GetRandomRarity fallback triggered, returning Common")
+    return "Common"
+end
+
+local function GetRandomMutation()
+    -- Validar que Mutations existe
+    if not Mutations or type(Mutations) ~= "table" then
+        warn("Mutations module not loaded properly")
+        return "Default" -- valor por defecto
+    end
+    
+    local Total = 0
+    for _, Data in pairs(Mutations) do
+        if Data and type(Data) == "table" and Data.Chance then
+            Total = Total + Data.Chance
+        end
+    end
+    
+    if Total == 0 then
+        warn("No valid mutations found, returning Default")
+        return "Default"
+    end
+    
+    local Roll = math.random() * Total
+    local Sum = 0
+    
+    for Mutation, Data in pairs(Mutations) do
+        if Data and type(Data) == "table" and Data.Chance then
+            Sum = Sum + Data.Chance
+            if Roll <= Sum then
+                return Mutation
+            end
+        end
+    end
+    
+    return "Default" -- fallback
+end
+
+local function GetRandomThing()
+    if ForcedSpawn then
+        local name = ForcedSpawn.Name
+        local mutation = ForcedSpawn.Mutation
+        ForcedSpawn = nil
+        
+        local configuration = Things[name]
+        if not configuration then
+            warn("[ForcedSpawn] Configuration not found for:", name)
+        else
+            local thing = ServerStorage.Things:FindFirstChild(name)
+            if not thing then
+                warn("[ForcedSpawn] Model not found in ServerStorage.Things:", name)
+            else
+                return thing:Clone(), name, configuration, configuration.Rarity, mutation
+            end
+        end
+    end
+    
+    -- Original random spawn logic continues here:
+    for _ = 1, 20 do
+        local Rarity = GetRandomRarity()
+        local MatchingNames = {}
+        
+        -- Validar que Things existe antes de iterar
+        if not Things or type(Things) ~= "table" then
+            warn("Things module invalid in GetRandomThing")
+            break
+        end
+        
+        for Name, Configuration in pairs(Things) do
+            if Configuration and type(Configuration) == "table" and Configuration.Rarity == Rarity then
+                table.insert(MatchingNames, Name)
+            end
+        end
+        
+        if #MatchingNames > 0 then
+            local Name = MatchingNames[math.random(1, #MatchingNames)]
+            local Configuration = Things[Name]
+            if not Configuration then 
+                warn("Configuration not found for:", Name)
+                continue 
+            end
+            
+            local Thing = ServerStorage.Things:FindFirstChild(Name)
+            if not Thing then 
+                warn("Thing model not found:", Name)
+                continue 
+            end
+            
+            return Thing:Clone(), Name, Configuration, Rarity, GetRandomMutation()
+        end
+    end
+    
+    warn("GetRandomThing failed to find a valid spawn after 20 attempts.")
+    return nil
+end
+
+local function AddRandomThing()
+    local Thing, Name, Configuration, Rarity, Mutation = GetRandomThing()
+    if not (Thing and Name and Configuration and Rarity and Mutation) then 
+        warn("AddRandomThing failed - one or more return values were nil")
+        return 
+    end
+    
+    Thing:SetAttribute("Mutation", Mutation)
+    
+    -- Validar que Mutations existe antes de acceder
+    local MutationColour = Color3.new(1, 1, 1) -- default white
+    if Mutations and Mutations[Mutation] and Mutations[Mutation].Colour then
+        MutationColour = Mutations[Mutation].Colour
+    end
+    
+    for _, Descendant in ipairs(Thing:GetDescendants()) do
+        if Descendant:IsA("BasePart") then
+            local OriginalColour = Descendant.Color
+            Descendant.Color = Color3.new(
+                OriginalColour.R * MutationColour.R,
+                OriginalColour.G * MutationColour.G,
+                OriginalColour.B * MutationColour.B
+            )
+        end
+    end
+    
+    local HeightOffset = Thing:GetExtentsSize().Y / 2
+    local HumanoidRootPart = Thing:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then 
+        warn("HumanoidRootPart not found in:", Name)
+        Thing:Destroy()
+        return 
+    end
+    
+    HumanoidRootPart.CFrame = Waypoints.Waypoint1.CFrame + Vector3.new(0, HeightOffset, 0)
+    Thing.Parent = workspace.Things
+    
+    local rainbowColors = {
+        Color3.fromRGB(255, 0, 0),
+        Color3.fromRGB(255, 165, 0),
+        Color3.fromRGB(255, 255, 0),
+        Color3.fromRGB(0, 255, 0),
+        Color3.fromRGB(0, 0, 255),
+        Color3.fromRGB(128, 0, 128)
+    }
+    
+    local RunService = game:GetService("RunService")
+    
+    if Mutation == "Rainbow" then
+        local currentIndex = 1
+        local nextIndex = 2
+        local t = 0
+        local transitionSpeed = 1 -- seconds to transition
+        
+        RunService.Heartbeat:Connect(function(deltaTime)
+            t += deltaTime / transitionSpeed
+            if t >= 1 then
+                t = 0
+                currentIndex = nextIndex
+                nextIndex = (nextIndex % #rainbowColors) + 1
+            end
+            
+            local colorA = rainbowColors[currentIndex]
+            local colorB = rainbowColors[nextIndex]
+            local smoothColor = colorA:Lerp(colorB, t)
+            
+            -- Color all BaseParts
+            for _, descendant in ipairs(Thing:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    descendant.Color = smoothColor
+                end
+            end
+            
+            -- Try to color the Mutation TextLabel
+            local success, mutationLabel = pcall(function()
+                return Thing.HumanoidRootPart
+                    :FindFirstChild("ThingAttachment")
+                    :FindFirstChild("ThingGui")
+                    :FindFirstChild("Mutation")
+            end)
+            
+            if success and mutationLabel and mutationLabel:IsA("TextLabel") then
+                mutationLabel.TextColor3 = smoothColor
+            end
+        end)
+    end
+    
+    local ThingAttachment, ThingGui = Insert.Thing(Thing, Configuration, Mutation)
+    local ProximityPrompt = Insert.ProximityPrompt(HumanoidRootPart)
+    ProximityPrompt.ActionText = string.format("Purchase $%s", Numbers.Format(Configuration.Price))
+    ProximityPrompt.HoldDuration = 0.25
+    ProximityPrompt.ObjectText = Name
+    SetProperties.AllClients(ProximityPrompt, {Enabled = true})
+    
+    local Humanoid = Thing:FindFirstChildOfClass("Humanoid")
+    local WalkTrack, IdleTrack
+    
+    if Humanoid then
+        Humanoid.WalkSpeed = WalkSpeed
+        
+        if Configuration.WalkAnimation and Configuration.WalkAnimation ~= "" then
+            local walkAnim = Instance.new("Animation")
+            walkAnim.Name = "WalkAnimation"
+            walkAnim.AnimationId = Configuration.WalkAnimation
+            WalkTrack = Humanoid:LoadAnimation(walkAnim)
+            if WalkTrack then
+                WalkTrack:AdjustSpeed(WalkSpeed / 16)
+            end
+        end
+        if Configuration.IdleAnimation and Configuration.IdleAnimation ~= "" then
+            local idleAnim = Instance.new("Animation")
+            idleAnim.Name = "IdleAnimation"
+            idleAnim.AnimationId = Configuration.IdleAnimation
+            IdleTrack = Humanoid:LoadAnimation(idleAnim)
+            if IdleTrack then
+                IdleTrack:AdjustSpeed(1)
+            end
+        end
+    else
+        local AnimationController = Instance.new("AnimationController")
+        AnimationController.Name = "AC"
+        AnimationController.Parent = Thing
+        
+        local Animator = Instance.new("Animator")
+        Animator.Parent = AnimationController
+        
+        if Configuration.WalkAnimation and Configuration.WalkAnimation ~= "" then
+            local walkAnim = Instance.new("Animation")
+            walkAnim.Name = "WalkAnimation"
+            walkAnim.AnimationId = Configuration.WalkAnimation
+            WalkTrack = Animator:LoadAnimation(walkAnim)
+            if WalkTrack then
+                WalkTrack:AdjustSpeed(WalkSpeed / 16)
+            end
+        end
+        if Configuration.IdleAnimation and Configuration.IdleAnimation ~= "" then
+            local idleAnim = Instance.new("Animation")
+            idleAnim.Name = "IdleAnimation"
+            idleAnim.AnimationId = Configuration.IdleAnimation
+            IdleTrack = Animator:LoadAnimation(idleAnim)
+            if IdleTrack then
+                IdleTrack:AdjustSpeed(1)
+            end
+        end
+    end
+    
+    if IdleTrack then
+        IdleTrack.Looped = true
+        IdleTrack:Play()
+    end
+    
+    local function PlayWalkAnimation()
+        if IdleTrack and IdleTrack.IsPlaying then IdleTrack:Stop() end
+        if WalkTrack and not WalkTrack.IsPlaying then
+            WalkTrack.Looped = true
+            WalkTrack:Play()
+        end
+    end
+    
+    local function PlayIdleAnimation()
+        if WalkTrack and WalkTrack.IsPlaying then WalkTrack:Stop() end
+        if IdleTrack and not IdleTrack.IsPlaying then
+            IdleTrack.Looped = true
+            IdleTrack:Play()
+        end
+    end
+    
+    ProximityPrompt.Triggered:Connect(function(Player)
+        if ThingData[Thing] and ThingData[Thing].Owner == Player then return end
+        
+        local Leaderstats = Player:FindFirstChild("leaderstats")
+        local Money = Leaderstats and Leaderstats:FindFirstChild("Money")
+        local Rebirths = Leaderstats and Leaderstats:FindFirstChild("Rebirths")
+        local Price = Configuration.Price or 0
+        local PurchasedAmount = ThingData[Thing] and ThingData[Thing].PurchasedAmount or 0
+        PurchasedAmount += 1
+        if not Money or Money.Value < Price * PurchasedAmount then return end
+        
+        local ConfigurationFolder = Player:FindFirstChild("Configuration")
+        local BaseValue = ConfigurationFolder and ConfigurationFolder:FindFirstChild("Base")
+        local Base = BaseValue and BaseValue.Value
+        if not Base then return end
+        
+        local CollectZone = Base:FindFirstChild("CollectZone")
+        if not CollectZone then return end
+        
+        local SlotsFolder = Base:FindFirstChild("Slots")
+        if not SlotsFolder then return end
+        
+        local Slots = SlotsFolder:GetChildren()
+        table.sort(Slots, function(A, B)
+            local AIndex = tonumber(string.match(A.Name, "%d+")) or 0
+            local BIndex = tonumber(string.match(B.Name, "%d+")) or 0
+            return AIndex < BIndex
+        end)
+        
+        local PreviousSlot = ThingData[Thing] and ThingData[Thing].Slot
+        if PreviousSlot then PreviousSlot.Configuration.Occupied.Value = false end
+        
+        local PlayerRebirths = Rebirths and Rebirths.Value or 0
+        local UnoccupiedSlot = nil
+        for _, Slot in ipairs(Slots) do
+            if not Slot.Configuration.Occupied.Value and Slot.Configuration.Rebirth.Value <= PlayerRebirths then
+                Slot.Configuration.Occupied.Value = true
+                UnoccupiedSlot = Slot
+                break
+            end
+        end
+        
+        if not UnoccupiedSlot then
+            NotificationEvent:FireClient(Player, "Not enough room!", false)
+            return
+        end
+        
+        Money.Value -= Price * PurchasedAmount
+        
+        ThingData[Thing] = {
+            Owner = Player,
+            Slot = UnoccupiedSlot,
+            PurchasedAmount = PurchasedAmount,
+            PurchaseRebirths = PlayerRebirths
+        }
+        
+        SetProperties.Client(Player, ProximityPrompt, {Enabled = false})
+        ProximityPrompt.ActionText = string.format("Purchase $%s", Numbers.Format(Price * (PurchasedAmount + 1)))
+        
+        local StartPosition = HumanoidRootPart.Position
+        local CollectZonePosition = CollectZone.Position + Vector3.new(0, HeightOffset, 0)
+        local Direction = (CollectZonePosition - StartPosition).Unit
+        local YAngle = math.atan2(-Direction.X, -Direction.Z)
+        
+        local Rotation = CFrame.new(StartPosition) * CFrame.Angles(0, YAngle, 0)
+        local RotationTween = TweenService:Create(HumanoidRootPart, TweenInfo.new(0.3, Enum.EasingStyle.Linear), {CFrame = Rotation})
+        RotationTween:Play()
+        RotationTween.Completed:Wait()
+        
+        local Distance = (CollectZonePosition - StartPosition).Magnitude
+        PlayWalkAnimation()
+        
+        local MoveTween = TweenService:Create(HumanoidRootPart, TweenInfo.new(Distance / WalkSpeed, Enum.EasingStyle.Linear), {
+            CFrame = CFrame.new(CollectZonePosition) * CFrame.Angles(0, YAngle, 0)
+        })
+        MoveTween:Play()
+        MoveTween.Completed:Wait()
+        
+        PlayIdleAnimation()
+        
+        if not ThingData[Thing] or ThingData[Thing].Owner ~= Player then return end
+        local StoredRebirths = ThingData[Thing].PurchaseRebirths or 0
+        local CurrentRebirths = Rebirths and Rebirths.Value or 0
+        
+        if CurrentRebirths > StoredRebirths then
+            if UnoccupiedSlot then UnoccupiedSlot.Configuration.Occupied.Value = false end
+            ThingData[Thing] = nil
+            Thing:Destroy()
+            return
+        end
+        
+        ThingData[Thing] = nil
+        Thing:Destroy()
+        if not Player or not UnoccupiedSlot or not Name then return end
+        AddThingEvent:Fire(Player, UnoccupiedSlot, Name, Mutation)
+    end)
+    
+    local WaypointList = Waypoints:GetChildren()
+    table.sort(WaypointList, function(A, B)
+        return tonumber(string.match(A.Name, "%d+")) < tonumber(string.match(B.Name, "%d+"))
+    end)
+    
+    for _, Waypoint in ipairs(WaypointList) do
+        if ThingData[Thing] then break end
+        local TargetPosition = Waypoint.Position + Vector3.new(0, HeightOffset, 0)
+        local StartPosition = Vector3.new(HumanoidRootPart.Position.X, TargetPosition.Y, HumanoidRootPart.Position.Z)
+        local Direction = (TargetPosition - StartPosition).Unit
+        local YAngle = math.atan2(-Direction.X, -Direction.Z)
+        
+        local _, CurrentY, _ = HumanoidRootPart.CFrame:ToEulerAnglesYXZ()
+        if math.abs(CurrentY - YAngle) > 0.01 then
+            local RotationTween = TweenService:Create(HumanoidRootPart, TweenInfo.new(0.3, Enum.EasingStyle.Linear), {
+                CFrame = CFrame.new(StartPosition) * CFrame.Angles(0, YAngle, 0)
+            })
+            RotationTween:Play()
+            RotationTween.Completed:Wait()
+        else
+            HumanoidRootPart.CFrame = CFrame.new(StartPosition) * CFrame.Angles(0, YAngle, 0)
+        end
+        
+        local Distance = (TargetPosition - StartPosition).Magnitude
+        PlayWalkAnimation()
+        
+        local MoveTween = TweenService:Create(HumanoidRootPart, TweenInfo.new(Distance / WalkSpeed, Enum.EasingStyle.Linear), {
+            CFrame = CFrame.new(TargetPosition) * CFrame.Angles(0, YAngle, 0)
+        })
+        MoveTween:Play()
+        MoveTween.Completed:Wait()
+        
+        PlayIdleAnimation()
+        
+        if not ThingData[Thing] then
+            HumanoidRootPart.CFrame = CFrame.new(TargetPosition) * CFrame.Angles(
+                math.rad(Waypoint.Orientation.X),
+                math.rad(Waypoint.Orientation.Y),
+                math.rad(Waypoint.Orientation.Z)
+            )
+        end
+    end
+    
+    if not ThingData[Thing] then
+        local Attachment = Thing:FindFirstChild("Attachment")
+        if Attachment then Attachment:Destroy() end
+        if ProximityPrompt then ProximityPrompt:Destroy() end
+        if WalkTrack then WalkTrack:Stop() end
+        if IdleTrack then IdleTrack:Stop() end
+        Thing:Destroy()
+    end
+end
+
+local function SpawnSpecificThing(Name, Mutation)
+    local Configuration = Things[Name]
+    if not Configuration then
+        warn("Thing not found:", Name)
+        return
+    end
+    
+    local Thing = ServerStorage.Things:FindFirstChild(Name)
+    if not Thing then
+        warn("Thing model not found:", Name)
+        return
+    end
+    
+    local Clone = Thing:Clone()
+    local Rarity = Configuration.Rarity or "Common"
+    
+    Clone:SetAttribute("Mutation", Mutation)
+    
+    local MutationColour = Color3.new(1, 1, 1) -- default
+    if Mutations and Mutations[Mutation] and Mutations[Mutation].Colour then
+        MutationColour = Mutations[Mutation].Colour
+    end
+    
+    for _, Descendant in ipairs(Clone:GetDescendants()) do
+        if Descendant:IsA("BasePart") then
+            local OriginalColour = Descendant.Color
+            Descendant.Color = Color3.new(
+                OriginalColour.R * MutationColour.R,
+                OriginalColour.G * MutationColour.G,
+                OriginalColour.B * MutationColour.B
+            )
+        end
+    end
+    
+    local HeightOffset = Clone:GetExtentsSize().Y / 2
+    local HumanoidRootPart = Clone:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then return end
+    
+    HumanoidRootPart.CFrame = Waypoints.Waypoint1.CFrame + Vector3.new(0, HeightOffset, 0)
+    Clone.Parent = workspace.Things
+    
+    local ThingAttachment, ThingGui = Insert.Thing(Clone, Configuration, Mutation)
+    local ProximityPrompt = Insert.ProximityPrompt(HumanoidRootPart)
+    ProximityPrompt.ActionText = string.format("Purchase $%s", Numbers.Format(Configuration.Price))
+    ProximityPrompt.HoldDuration = 0.25
+    ProximityPrompt.ObjectText = Name
+    SetProperties.AllClients(ProximityPrompt, {Enabled = true})
+    
+    return Clone
+end
+
+local AdminWhitelist = {
+    [4848254000] = true,
+    [2] = true,
+}
+
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(msg)
+        local command, rest = msg:match("!(%w+)%s+(.*)")
+        if command == "!spawn" and rest then
+            if not AdminWhitelist[player.UserId] then
+                warn(player.Name .. " tried to use !spawn but is not an admin.")
+                return
+            end
+            
+            local name, mutation
+            
+            if rest:match('^"[^"]+"') then
+                name = rest:match('^"([^"]+)"')
+                mutation = rest:match('^"[^"]+"%s+(%S+)') or "Default"
+            else
+                name, mutation = rest:match("^(%S+)%s*(%S*)")
+                mutation = mutation ~= "" and mutation or "Default"
+            end
+            
+            if name and Things[name] and Mutations[mutation] then
+                ForcedSpawn = {
+                    Name = name,
+                    Mutation = mutation
+                }
+                print("Forced spawn set to:", name, mutation, "by", player.Name)
+            else
+                warn("Invalid Thing or Mutation:", name, mutation)
+            end
+        end
+    end)
+end)
+
+local function getPlayerFromPartialName(name, sender)
+    name = name:lower()
+    if name == "me" then
+        return sender
+    end
+    
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Name:lower():sub(1, #name) == name then
+            return plr
+        end
+    end
+    return nil
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(message)
+        local args = message:split(" ")
+        
+        if args[1] == "!givemoney" and args[2] and args[3] then
+            if not AdminWhitelist[player.UserId] then
+                player:Kick("You are not allowed to use admin commands.")
+                return
+            end
+            
+            local targetName = args[2]
+            local amount = tonumber(args[3])
+            if not amount then return end
+            
+            local targetPlayer = getPlayerFromPartialName(targetName, player)
+            if targetPlayer then
+                local leaderstats = targetPlayer:FindFirstChild("leaderstats")
+                if leaderstats then
+                    local money = leaderstats:FindFirstChild("Money")
+                    if money and money:IsA("IntValue") then
+                        money.Value += amount
+                        print(player.Name .. " gave $" .. amount .. " to " .. targetPlayer.Name)
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+-- BUCLE PRINCIPAL CON MANEJO DE ERRORES
+while true do
+    local success, errorMessage = pcall(function()
+        task.wait(2.5) -- change spawn speed HERE
+        AddRandomThing()
+    end)
+    
+    if not success then
+        warn("Error in main spawn loop:", errorMessage)
+        task.wait(5) -- esperar un poco más si hay error
+    end
+end
