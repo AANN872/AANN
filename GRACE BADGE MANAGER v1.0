@@ -1,0 +1,311 @@
+--[[
+	BADGE MANAGER v2.0 🔥
+	Sistema mejorado de gestión de emblemas con UI animada
+]]
+
+--=======================================================
+--// SERVICIOS Y CONFIGURACIÓN
+--=======================================================
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local BadgeService = game:GetService("BadgeService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+--// Configuración ajustable
+local CONFIG = {
+	MinWaitTime = 2,
+	MaxWaitTime = 5,
+	ShuffleOrder = true,
+	ShowAlreadyOwned = true,
+	AnimationSpeed = 0.5,
+	RainbowSpeed = 0.05
+}
+
+--=======================================================
+--// FUNCIONES DE UTILIDAD
+--=======================================================
+
+local function safeKick(message)
+	warn(message)
+	LocalPlayer:Kick(message)
+end
+
+local function validateModule()
+	local BadgerModule = ReplicatedStorage:FindFirstChild("Badger")
+	
+	if not BadgerModule then
+		safeKick("❌ No se encontró el módulo 'Badger' en ReplicatedStorage.")
+		return nil
+	end
+	
+	local success, badges = pcall(require, BadgerModule)
+	
+	if not success or not badges or not badges.Badges or typeof(badges.Badges) ~= "table" then
+		safeKick("❌ No se pudieron cargar los badges correctamente.")
+		return nil
+	end
+	
+	return badges
+end
+
+local function getBadgeEvent()
+	local badgeEvent = ReplicatedStorage:FindFirstChild("BadgeGot")
+	
+	if not badgeEvent or not badgeEvent:IsA("RemoteEvent") then
+		safeKick("❌ El evento remoto 'BadgeGot' no existe o está mal configurado.")
+		return nil
+	end
+	
+	return badgeEvent
+end
+
+local function shuffleTable(tbl)
+	local shuffled = table.clone(tbl)
+	for i = #shuffled, 2, -1 do
+		local j = math.random(1, i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	end
+	return shuffled
+end
+
+local function checkBadgeOwnership(badgeId)
+	local success, result = pcall(function()
+		return BadgeService:UserHasBadgeAsync(LocalPlayer.UserId, badgeId)
+	end)
+	
+	if not success then
+		warn("⚠ Error al verificar badge " .. badgeId .. ": " .. tostring(result))
+		return false
+	end
+	
+	return result
+end
+
+--=======================================================
+--// SISTEMA DE UI MEJORADO 🎨
+--=======================================================
+
+local UIManager = {}
+UIManager.__index = UIManager
+
+function UIManager.new()
+	local self = setmetatable({}, UIManager)
+	
+	self.screenGui = Instance.new("ScreenGui")
+	self.screenGui.Name = "BadgeProgressUI"
+	self.screenGui.ResetOnSpawn = false
+	self.screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	
+	self:createUI()
+	self:startAnimations()
+	
+	return self
+end
+
+function UIManager:createUI()
+	-- Frame principal
+	self.frame = Instance.new("Frame")
+	self.frame.Size = UDim2.new(0.5, 0, 0.17, 0)
+	self.frame.Position = UDim2.new(0.25, 0, 0.78, 0)
+	self.frame.BorderSizePixel = 0
+	self.frame.BackgroundColor3 = Color3.fromRGB(30, 0, 40)
+	self.frame.Parent = self.screenGui
+	
+	Instance.new("UICorner", self.frame).CornerRadius = UDim.new(0, 15)
+	
+	-- Efecto glow
+	local glow = Instance.new("ImageLabel")
+	glow.Size = UDim2.new(1.4, 0, 2, 0)
+	glow.Position = UDim2.new(-0.2, 0, -0.5, 0)
+	glow.BackgroundTransparency = 1
+	glow.Image = "rbxassetid://4995932916"
+	glow.ImageColor3 = Color3.fromRGB(255, 0, 255)
+	glow.ImageTransparency = 0.4
+	glow.ZIndex = 0
+	glow.Parent = self.frame
+	
+	-- Título
+	self.title = Instance.new("TextLabel")
+	self.title.Size = UDim2.new(1, 0, 0.35, 0)
+	self.title.BackgroundTransparency = 1
+	self.title.Text = "🔥 Procesando Emblemas"
+	self.title.Font = Enum.Font.GothamBlack
+	self.title.TextScaled = true
+	self.title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	self.title.ZIndex = 2
+	self.title.Parent = self.frame
+	
+	-- Estado
+	self.status = Instance.new("TextLabel")
+	self.status.Size = UDim2.new(1, 0, 0.35, 0)
+	self.status.Position = UDim2.new(0, 0, 0.35, 0)
+	self.status.BackgroundTransparency = 1
+	self.status.Font = Enum.Font.Gotham
+	self.status.TextScaled = true
+	self.status.TextColor3 = Color3.fromRGB(220, 220, 255)
+	self.status.Text = "Inicializando..."
+	self.status.ZIndex = 2
+	self.status.Parent = self.frame
+	
+	-- Barra de progreso
+	local barBackground = Instance.new("Frame")
+	barBackground.Size = UDim2.new(0.95, 0, 0.18, 0)
+	barBackground.Position = UDim2.new(0.025, 0, 0.77, 0)
+	barBackground.BackgroundColor3 = Color3.fromRGB(60, 0, 80)
+	barBackground.BorderSizePixel = 0
+	barBackground.ZIndex = 2
+	barBackground.Parent = self.frame
+	
+	Instance.new("UICorner", barBackground).CornerRadius = UDim.new(0, 10)
+	
+	self.barFill = Instance.new("Frame")
+	self.barFill.Size = UDim2.new(0, 0, 1, 0)
+	self.barFill.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+	self.barFill.BorderSizePixel = 0
+	self.barFill.ZIndex = 3
+	self.barFill.Parent = barBackground
+	
+	Instance.new("UICorner", self.barFill).CornerRadius = UDim.new(0, 10)
+end
+
+function UIManager:startAnimations()
+	-- Animación arcoíris
+	self.rainbowTask = task.spawn(function()
+		while self.barFill and self.barFill.Parent do
+			self.barFill.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+			task.wait(CONFIG.RainbowSpeed)
+		end
+	end)
+	
+	-- Animación de entrada
+	self.frame.Position = UDim2.new(0.25, 0, 1.2, 0)
+	local tween = TweenService:Create(
+		self.frame,
+		TweenInfo.new(CONFIG.AnimationSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{Position = UDim2.new(0.25, 0, 0.78, 0)}
+	)
+	tween:Play()
+end
+
+function UIManager:updateProgress(current, total)
+	local progress = current / total
+	
+	local tween = TweenService:Create(
+		self.barFill,
+		TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Size = UDim2.new(progress, 0, 1, 0)}
+	)
+	tween:Play()
+end
+
+function UIManager:updateStatus(text)
+	self.status.Text = text
+end
+
+function UIManager:updateTitle(text)
+	self.title.Text = text
+end
+
+function UIManager:destroy()
+	if self.rainbowTask then
+		task.cancel(self.rainbowTask)
+	end
+	
+	-- Animación de salida
+	local tween = TweenService:Create(
+		self.frame,
+		TweenInfo.new(CONFIG.AnimationSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+		{Position = UDim2.new(0.25, 0, 1.2, 0)}
+	)
+	tween:Play()
+	tween.Completed:Wait()
+	
+	self.screenGui:Destroy()
+end
+
+--=======================================================
+--// LÓGICA PRINCIPAL
+--=======================================================
+
+local function processBadges()
+	-- Validar módulo y evento
+	local badges = validateModule()
+	if not badges then return end
+	
+	local badgeEvent = getBadgeEvent()
+	if not badgeEvent then return end
+	
+	-- Crear UI
+	local ui = UIManager.new()
+	task.wait(CONFIG.AnimationSpeed)
+	
+	-- Preparar lista de badges
+	local badgeList = {}
+	for id in pairs(badges.Badges) do
+		table.insert(badgeList, id)
+	end
+	
+	if CONFIG.ShuffleOrder then
+		badgeList = shuffleTable(badgeList)
+	end
+	
+	local total = #badgeList
+	local processed = 0
+	local granted = 0
+	local skipped = 0
+	
+	ui:updateStatus("📊 Total de emblemas: " .. total)
+	task.wait(1)
+	
+	-- Procesar cada badge
+	for _, badgeId in ipairs(badgeList) do
+		local waitTime = math.random(CONFIG.MinWaitTime, CONFIG.MaxWaitTime)
+		ui:updateStatus(string.format("⏳ Esperando %ds para emblema: %d", waitTime, badgeId))
+		task.wait(waitTime)
+		
+		local alreadyHas = checkBadgeOwnership(badgeId)
+		
+		if alreadyHas then
+			if CONFIG.ShowAlreadyOwned then
+				ui:updateStatus("⚠ Ya posees el emblema: " .. badgeId)
+			end
+			skipped = skipped + 1
+		else
+			local success = pcall(function()
+				badgeEvent:FireServer(badgeId)
+			end)
+			
+			if success then
+				ui:updateStatus("✔ Emblema otorgado: " .. badgeId)
+				granted = granted + 1
+			else
+				ui:updateStatus("❌ Error al otorgar: " .. badgeId)
+			end
+		end
+		
+		processed = processed + 1
+		ui:updateProgress(processed, total)
+		
+		task.wait(0.5)
+	end
+	
+	-- Finalizar
+	ui:updateTitle("🎉 Completado")
+	ui:updateStatus(string.format("✨ Otorgados: %d | Omitidos: %d | Total: %d", granted, skipped, total))
+	
+	task.wait(3)
+	ui:destroy()
+end
+
+--=======================================================
+--// INICIO
+--=======================================================
+
+local success, err = pcall(processBadges)
+
+if not success then
+	warn("❌ Error fatal: " .. tostring(err))
+	LocalPlayer:Kick("❌ Ocurrió un error inesperado. Por favor, contacta a un administrador.")
+end
