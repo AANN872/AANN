@@ -1,0 +1,584 @@
+--[[
+	🔥 AANN EXECUTOR v3.0 ULTRA PROFESSIONAL 🔥
+	Pantalla de carga cinematográfica con efectos 3D
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local BadgeService = game:GetService("BadgeService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+--=======================================================
+--// SISTEMA DE SONIDO
+--=======================================================
+
+local function playSound(soundId, volume, pitch)
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://" .. soundId
+	sound.Volume = volume or 0.5
+	sound.PlaybackSpeed = pitch or 1
+	sound.Parent = game:GetService("SoundService")
+	sound:Play()
+	
+	sound.Ended:Connect(function()
+		sound:Destroy()
+	end)
+	
+	return sound
+end
+
+--=======================================================
+--// PANTALLA DE CARGA CINEMATOGRÁFICA
+--=======================================================
+
+local function createLoadingScreen()
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "AANN_EXECUTOR_ULTRA"
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = 999
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	
+	-- Fondo con gradiente
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(5, 0, 15)
+	bg.BorderSizePixel = 0
+	bg.Parent = screenGui
+	
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 0, 30)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20, 0, 50)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 0, 30))
+	}
+	gradient.Rotation = 45
+	gradient.Parent = bg
+	
+	-- Animación del gradiente
+	task.spawn(function()
+		while bg.Parent do
+			gradient.Rotation = (gradient.Rotation + 0.5) % 360
+			task.wait(0.03)
+		end
+	end)
+	
+	-- Partículas de fondo
+	for i = 1, 30 do
+		local particle = Instance.new("Frame")
+		particle.Size = UDim2.new(0, math.random(2, 6), 0, math.random(2, 6))
+		particle.Position = UDim2.new(math.random(), 0, math.random(), 0)
+		particle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		particle.BackgroundTransparency = math.random(50, 90) / 100
+		particle.BorderSizePixel = 0
+		particle.Parent = bg
+		
+		Instance.new("UICorner", particle).CornerRadius = UDim.new(1, 0)
+		
+		-- Animación flotante
+		task.spawn(function()
+			while particle.Parent do
+				local tween = TweenService:Create(
+					particle,
+					TweenInfo.new(math.random(3, 6), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+					{
+						Position = UDim2.new(
+							particle.Position.X.Scale + math.random(-20, 20) / 100,
+							0,
+							particle.Position.Y.Scale + math.random(-20, 20) / 100,
+							0
+						),
+						BackgroundTransparency = math.random(30, 95) / 100
+					}
+				)
+				tween:Play()
+				tween.Completed:Wait()
+			end
+		end)
+	end
+	
+	-- Glow central masivo
+	local mainGlow = Instance.new("ImageLabel")
+	mainGlow.Size = UDim2.new(2.5, 0, 2.5, 0)
+	mainGlow.Position = UDim2.new(-0.75, 0, -0.75, 0)
+	mainGlow.AnchorPoint = Vector2.new(0, 0)
+	mainGlow.BackgroundTransparency = 1
+	mainGlow.Image = "rbxassetid://4995932916"
+	mainGlow.ImageColor3 = Color3.fromRGB(150, 0, 255)
+	mainGlow.ImageTransparency = 0.3
+	mainGlow.ZIndex = 1
+	mainGlow.Parent = bg
+	
+	-- Animación de respiración del glow
+	task.spawn(function()
+		while mainGlow.Parent do
+			TweenService:Create(
+				mainGlow,
+				TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+				{ImageTransparency = 0.5}
+			):Play()
+			task.wait(2)
+			TweenService:Create(
+				mainGlow,
+				TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+				{ImageTransparency = 0.3}
+			):Play()
+			task.wait(2)
+		end
+	end)
+	
+	-- Container para el logo con efecto 3D
+	local logoContainer = Instance.new("Frame")
+	logoContainer.Size = UDim2.new(0.9, 0, 0.25, 0)
+	logoContainer.Position = UDim2.new(0.5, 0, 0.38, 0)
+	logoContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	logoContainer.BackgroundTransparency = 1
+	logoContainer.ZIndex = 5
+	logoContainer.Parent = bg
+	
+	-- Crear múltiples capas para efecto 3D
+	local layers = {}
+	local totalLayers = 5
+	
+	for i = 1, totalLayers do
+		local layer = Instance.new("TextLabel")
+		layer.Size = UDim2.new(1, 0, 1, 0)
+		layer.Position = UDim2.new(0, (totalLayers - i) * 2, 0, (totalLayers - i) * 2)
+		layer.BackgroundTransparency = 1
+		layer.Font = Enum.Font.GothamBlack
+		layer.TextScaled = true
+		layer.Text = ""
+		layer.ZIndex = 5 + i
+		layer.Parent = logoContainer
+		
+		-- Capas traseras más oscuras para profundidad
+		if i < totalLayers then
+			layer.TextColor3 = Color3.fromRGB(50 + i * 30, 0, 100 + i * 20)
+			layer.TextTransparency = 0.3 + (i * 0.1)
+		else
+			-- Capa frontal brillante
+			layer.TextColor3 = Color3.fromRGB(255, 255, 255)
+			layer.TextTransparency = 0
+			
+			-- Stroke para resaltar
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(200, 0, 255)
+			stroke.Thickness = 3
+			stroke.Transparency = 0.3
+			stroke.Parent = layer
+		end
+		
+		table.insert(layers, layer)
+	end
+	
+	-- Subtítulo moderno
+	local subtitle = Instance.new("TextLabel")
+	subtitle.Size = UDim2.new(0.6, 0, 0.06, 0)
+	subtitle.Position = UDim2.new(0.5, 0, 0.53, 0)
+	subtitle.AnchorPoint = Vector2.new(0.5, 0.5)
+	subtitle.BackgroundTransparency = 1
+	subtitle.Font = Enum.Font.GothamMedium
+	subtitle.TextScaled = true
+	subtitle.Text = "INITIALIZING SYSTEM"
+	subtitle.TextColor3 = Color3.fromRGB(150, 150, 255)
+	subtitle.TextTransparency = 1
+	subtitle.ZIndex = 10
+	subtitle.Parent = bg
+	
+	-- Barra de progreso moderna
+	local progressContainer = Instance.new("Frame")
+	progressContainer.Size = UDim2.new(0.5, 0, 0.008, 0)
+	progressContainer.Position = UDim2.new(0.5, 0, 0.68, 0)
+	progressContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	progressContainer.BackgroundColor3 = Color3.fromRGB(40, 0, 80)
+	progressContainer.BorderSizePixel = 0
+	progressContainer.ZIndex = 8
+	progressContainer.BackgroundTransparency = 1
+	progressContainer.Parent = bg
+	
+	Instance.new("UICorner", progressContainer).CornerRadius = UDim.new(1, 0)
+	
+	local progressFill = Instance.new("Frame")
+	progressFill.Size = UDim2.new(0, 0, 1, 0)
+	progressFill.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+	progressFill.BorderSizePixel = 0
+	progressFill.ZIndex = 9
+	progressFill.Parent = progressContainer
+	
+	Instance.new("UICorner", progressFill).CornerRadius = UDim.new(1, 0)
+	
+	-- Glow de la barra
+	local barGlow = Instance.new("ImageLabel")
+	barGlow.Size = UDim2.new(3, 0, 15, 0)
+	barGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	barGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+	barGlow.BackgroundTransparency = 1
+	barGlow.Image = "rbxassetid://4995932916"
+	barGlow.ImageColor3 = Color3.fromRGB(255, 0, 255)
+	barGlow.ImageTransparency = 0.5
+	barGlow.ZIndex = 7
+	barGlow.Parent = progressFill
+	
+	-- Efecto arcoíris en la barra
+	task.spawn(function()
+		while progressFill.Parent do
+			local hue = tick() % 5 / 5
+			progressFill.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+			barGlow.ImageColor3 = Color3.fromHSV(hue, 0.8, 1)
+			task.wait(0.03)
+		end
+	end)
+	
+	-- Porcentaje
+	local percentage = Instance.new("TextLabel")
+	percentage.Size = UDim2.new(0.15, 0, 0.05, 0)
+	percentage.Position = UDim2.new(0.5, 0, 0.72, 0)
+	percentage.AnchorPoint = Vector2.new(0.5, 0.5)
+	percentage.BackgroundTransparency = 1
+	percentage.Font = Enum.Font.GothamBold
+	percentage.TextScaled = true
+	percentage.Text = "0%"
+	percentage.TextColor3 = Color3.fromRGB(255, 255, 255)
+	percentage.TextTransparency = 1
+	percentage.ZIndex = 10
+	percentage.Parent = bg
+	
+	-- Sonido de inicio épico
+	playSound(6026984224, 0.4, 1) -- Sonido futurista
+	
+	-- Animación de entrada
+	return {
+		gui = screenGui,
+		bg = bg,
+		layers = layers,
+		subtitle = subtitle,
+		progressContainer = progressContainer,
+		progressFill = progressFill,
+		percentage = percentage,
+		logoContainer = logoContainer
+	}
+end
+
+--=======================================================
+--// ANIMACIÓN DE TEXTO 3D
+--=======================================================
+
+local function animateText(elements, text, typeDelay)
+	-- Fade in del subtítulo
+	TweenService:Create(
+		elements.subtitle,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{TextTransparency = 0}
+	):Play()
+	
+	-- Fade in del porcentaje
+	TweenService:Create(
+		elements.percentage,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{TextTransparency = 0}
+	):Play()
+	
+	-- Fade in de la barra
+	TweenService:Create(
+		elements.progressContainer,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{BackgroundTransparency = 0.3}
+	):Play()
+	
+	-- Escala de entrada del logo
+	elements.logoContainer.Size = UDim2.new(0.5, 0, 0.15, 0)
+	TweenService:Create(
+		elements.logoContainer,
+		TweenInfo.new(0.8, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+		{Size = UDim2.new(0.9, 0, 0.25, 0)}
+	):Play()
+	
+	-- Escribir texto letra por letra en todas las capas
+	for i = 1, #text do
+		for _, layer in ipairs(elements.layers) do
+			layer.Text = string.sub(text, 1, i)
+		end
+		
+		-- Sonido de tecleo sutil
+		if i % 2 == 0 then
+			playSound(12221967, 0.15, 1.2 + math.random() * 0.3)
+		end
+		
+		task.wait(typeDelay)
+	end
+	
+	-- Efecto de brillo al completar
+	task.wait(0.3)
+	playSound(3398620867, 0.3, 1.5) -- Sonido de completado
+end
+
+--=======================================================
+--// ANIMACIÓN DE CARGA
+--=======================================================
+
+local function animateLoading(elements, duration)
+	local startTime = tick()
+	local endTime = startTime + duration
+	
+	while tick() < endTime do
+		local progress = (tick() - startTime) / duration
+		local percent = math.floor(progress * 100)
+		
+		-- Actualizar barra
+		TweenService:Create(
+			elements.progressFill,
+			TweenInfo.new(0.1, Enum.EasingStyle.Linear),
+			{Size = UDim2.new(progress, 0, 1, 0)}
+		):Play()
+		
+		-- Actualizar porcentaje
+		elements.percentage.Text = percent .. "%"
+		
+		-- Actualizar subtítulo con estados
+		if percent < 25 then
+			elements.subtitle.Text = "LOADING CORE SYSTEMS..."
+		elseif percent < 50 then
+			elements.subtitle.Text = "INITIALIZING MODULES..."
+		elseif percent < 75 then
+			elements.subtitle.Text = "CONNECTING TO SERVICES..."
+		else
+			elements.subtitle.Text = "FINALIZING SETUP..."
+		end
+		
+		task.wait(0.03)
+	end
+	
+	-- Completar al 100%
+	elements.progressFill.Size = UDim2.new(1, 0, 1, 0)
+	elements.percentage.Text = "100%"
+	elements.subtitle.Text = "COMPLETE!"
+	
+	playSound(6895079853, 0.4, 1) -- Sonido de éxito
+	
+	-- Flash de completado
+	local flash = Instance.new("Frame")
+	flash.Size = UDim2.new(1, 0, 1, 0)
+	flash.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	flash.BackgroundTransparency = 1
+	flash.BorderSizePixel = 0
+	flash.ZIndex = 100
+	flash.Parent = elements.bg
+	
+	TweenService:Create(
+		flash,
+		TweenInfo.new(0.2),
+		{BackgroundTransparency = 0.7}
+	):Play()
+	
+	task.wait(0.2)
+	
+	TweenService:Create(
+		flash,
+		TweenInfo.new(0.3),
+		{BackgroundTransparency = 1}
+	):Play()
+end
+
+--=======================================================
+--// FADE OUT
+--=======================================================
+
+local function fadeOut(elements)
+	task.wait(0.5)
+	
+	-- Sonido de transición
+	playSound(12221845, 0.3, 0.9)
+	
+	local tweenInfo = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	
+	-- Fade out de todos los elementos
+	TweenService:Create(elements.logoContainer, tweenInfo, {
+		Position = UDim2.new(0.5, 0, 0.2, 0)
+	}):Play()
+	
+	for _, layer in ipairs(elements.layers) do
+		TweenService:Create(layer, tweenInfo, {TextTransparency = 1}):Play()
+	end
+	
+	TweenService:Create(elements.subtitle, tweenInfo, {TextTransparency = 1}):Play()
+	TweenService:Create(elements.percentage, tweenInfo, {TextTransparency = 1}):Play()
+	TweenService:Create(elements.progressContainer, tweenInfo, {BackgroundTransparency = 1}):Play()
+	TweenService:Create(elements.progressFill, tweenInfo, {BackgroundTransparency = 1}):Play()
+	TweenService:Create(elements.bg, tweenInfo, {BackgroundTransparency = 1}):Play()
+	
+	task.wait(1)
+	elements.gui:Destroy()
+end
+
+--=======================================================
+--// EJECUTAR PANTALLA DE CARGA
+--=======================================================
+
+local loadScreen = createLoadingScreen()
+animateText(loadScreen, "AANN EXECUTOR", 0.1)
+task.wait(0.5)
+animateLoading(loadScreen, 3)
+fadeOut(loadScreen)
+
+--=======================================================
+--// UI DE BADGES MEJORADA
+--=======================================================
+
+local BadgerModule = ReplicatedStorage:FindFirstChild("Badger")
+if not BadgerModule then
+	LocalPlayer:Kick("❌ No se encontró el módulo de emblemas.")
+	return
+end
+
+local badges = require(BadgerModule)
+local badgeEvent = ReplicatedStorage:FindFirstChild("BadgeGot")
+
+if not badgeEvent then
+	LocalPlayer:Kick("❌ Evento de badges no encontrado.")
+	return
+end
+
+-- Crear UI de badges
+local ui = Instance.new("ScreenGui")
+ui.Name = "AANN_BadgeUI"
+ui.ResetOnSpawn = false
+ui.Parent = LocalPlayer.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0.5, 0, 0.18, 0)
+frame.Position = UDim2.new(0.25, 0, 1.2, 0)
+frame.BackgroundColor3 = Color3.fromRGB(15, 0, 40)
+frame.BorderSizePixel = 0
+frame.Parent = ui
+
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 20)
+
+-- Glow
+local glow = Instance.new("ImageLabel")
+glow.Size = UDim2.new(1.6, 0, 2.5, 0)
+glow.Position = UDim2.new(-0.3, 0, -0.75, 0)
+glow.BackgroundTransparency = 1
+glow.Image = "rbxassetid://4995932916"
+glow.ImageColor3 = Color3.fromRGB(150, 0, 255)
+glow.ImageTransparency = 0.4
+glow.ZIndex = 0
+glow.Parent = frame
+
+-- Título
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0.32, 0)
+title.Position = UDim2.new(0, 0, 0.05, 0)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBlack
+title.TextScaled = true
+title.Text = "⚡ PROCESANDO EMBLEMAS"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.ZIndex = 2
+title.Parent = frame
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(150, 0, 255)
+stroke.Thickness = 2
+stroke.Parent = title
+
+-- Estado
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(0.95, 0, 0.28, 0)
+status.Position = UDim2.new(0.025, 0, 0.4, 0)
+status.BackgroundTransparency = 1
+status.Font = Enum.Font.Gotham
+status.TextScaled = true
+status.Text = "Iniciando..."
+status.TextColor3 = Color3.fromRGB(200, 200, 255)
+status.ZIndex = 2
+status.Parent = frame
+
+-- Barra
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(0.92, 0, 0.14, 0)
+barBg.Position = UDim2.new(0.04, 0, 0.78, 0)
+barBg.BackgroundColor3 = Color3.fromRGB(40, 0, 80)
+barBg.BorderSizePixel = 0
+barBg.ZIndex = 2
+barBg.Parent = frame
+
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+barFill.BorderSizePixel = 0
+barFill.ZIndex = 3
+barFill.Parent = barBg
+
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+
+-- Arcoíris
+task.spawn(function()
+	while barFill.Parent do
+		barFill.BackgroundColor3 = Color3.fromHSV(tick() % 1, 1, 1)
+		task.wait(0.03)
+	end
+end)
+
+-- Animar entrada
+playSound(6895079853, 0.3, 1.2)
+TweenService:Create(
+	frame,
+	TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+	{Position = UDim2.new(0.25, 0, 0.78, 0)}
+):Play()
+
+task.wait(0.8)
+
+-- Procesar badges
+local list = {}
+for id in pairs(badges.Badges) do
+	table.insert(list, id)
+end
+
+local total = #list
+local progress = 0
+
+for _, badgeId in ipairs(list) do
+	local waitTime = math.random(2, 5)
+	status.Text = "⏳ Esperando " .. waitTime .. "s • Badge: " .. badgeId
+	task.wait(waitTime)
+
+	local success, has = pcall(function()
+		return BadgeService:UserHasBadgeAsync(LocalPlayer.UserId, badgeId)
+	end)
+
+	if success and has then
+		status.Text = "⚠ Ya poseías: " .. badgeId
+	else
+		badgeEvent:FireServer(badgeId)
+		status.Text = "✅ Otorgado: " .. badgeId
+		playSound(12221967, 0.2, 1.5)
+	end
+
+	progress += 1
+	TweenService:Create(
+		barFill,
+		TweenInfo.new(0.3),
+		{Size = UDim2.new(progress / total, 0, 1, 0)}
+	):Play()
+	
+	task.wait(0.5)
+end
+
+title.Text = "🎉 COMPLETADO"
+status.Text = "Todos los emblemas procesados"
+playSound(6895079853, 0.5, 1)
+
+task.wait(3)
+
+TweenService:Create(
+	frame,
+	TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+	{Position = UDim2.new(0.25, 0, 1.2, 0)}
+):Play()
+
+task.wait(0.7)
+ui:Destroy()
