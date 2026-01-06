@@ -1,0 +1,293 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- // SERVICIOS // --
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local LocalPlayer = Players.LocalPlayer
+
+-- // VARIABLES DE ESTADO // --
+local hbGrace1, hbGrace2, hbGodMode, hbEntity, hbFullBright
+local Sound_On = 4590662766
+local Sound_Notify = 6546924200
+
+-- // SISTEMA DE AUDIO Y NOTIS (CORREGIDO) // --
+local function PlayEffect(id)
+    task.spawn(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://" .. id
+        s.Volume = 1
+        s.Parent = game:GetService("SoundService")
+        s:Play()
+        task.wait(2)
+        s:Destroy()
+    end)
+end
+
+local function SmartNotify(titulo, mensaje)
+    PlayEffect(Sound_Notify)
+    Rayfield:Notify({
+        Title = titulo,
+        Content = mensaje,
+        Duration = 4,
+        Image = 4483345998,
+    })
+end
+
+-- // FUNCIONES ORIGINALES (COMPLETAS Y SIN TOCAR) // --
+local function original_grace()
+    pcall(function()
+        for _, obj in ipairs(LocalPlayer:GetDescendants()) do
+            if obj.Name == "NOW" then obj:Destroy() end
+        end
+        local bc = workspace:FindFirstChild("Beacons")
+        if bc then
+            for _, child in ipairs(bc:GetChildren()) do
+                if child.Name == "Part" then
+                    workspace:WaitForChild("Script"):WaitForChild("BeaconPickup"):FireServer(child)
+                end
+            end
+        end
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                if obj.Name:sub(1, 4) == "Send" or obj.Name:sub(1, 4) == "Kill" then obj:Destroy() end
+            end
+        end
+        for _, item in ipairs(workspace:GetChildren()) do
+            if item.Name ~= "Beacons" and not item:IsA("BaseScript") then
+                if item.Name == "Rooms" then
+                    for _, child in ipairs(item:GetChildren()) do child:Destroy() end
+                else item:Destroy() end
+            end
+        end
+    end)
+end
+
+local function original_grace2()
+    pcall(function()
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local root = character:WaitForChild("HumanoidRootPart")
+        local roomsFolder = workspace:WaitForChild("Rooms")
+        local roomModels = {}
+        for _, model in ipairs(roomsFolder:GetChildren()) do
+            if model:IsA("Model") then
+                local num = tonumber(model.Name)
+                if num then table.insert(roomModels, { model = model, number = num }) end
+            end
+        end
+        for _, room in ipairs(roomModels) do
+            local roomModel = room.model
+            local vault = roomModel:FindFirstChild("VaultEntrance")
+            if vault then
+                ReplicatedStorage.TriggerPrompt:FireServer(vault:FindFirstChild("Hinged"):FindFirstChild("Cylinder"):FindFirstChild("ProximityPrompt"))
+                ReplicatedStorage.Events.EnteredSaferoom:FireServer()
+            else
+                local toDestroy = {}
+                for _, descendant in ipairs(roomModel:GetDescendants()) do
+                    if descendant:IsA("BaseScript") then
+                        local target = descendant
+                        while target.Parent ~= roomModel do target = target.Parent end
+                        toDestroy[target] = true
+                    end
+                end
+                for target in pairs(toDestroy) do target:Destroy() end
+            end
+        end
+        local safeRoom = roomsFolder:FindFirstChild("SafeRoom", true)
+        local deathTimer = workspace:FindFirstChild("DEATHTIMER")
+        table.sort(roomModels, function(a, b) return a.number < b.number end)
+        if safeRoom and safeRoom:IsA("Model") and not safeRoom:IsDescendantOf(roomModels[#roomModels].model) and not safeRoom:IsDescendantOf(roomModels[1].model) and deathTimer.Value <= 0 then
+            local hitbox = safeRoom:FindFirstChild("Scale") and safeRoom.Scale:FindFirstChild("hitbox")
+            if hitbox then
+                root.CFrame = hitbox.CFrame * CFrame.Angles(0, math.rad(225), 0)
+                workspace.CurrentCamera.CFrame = root.CFrame
+            end
+        else
+            local index = #roomModels
+            if safeRoom and safeRoom:IsA("Model") and not deathTimer:GetAttribute("AUTOGO") then index = math.min(11, #roomModels) end
+            local exit = roomModels[index] and roomModels[index].model:FindFirstChild("Exit")
+            if exit then
+                root.CFrame = exit.CFrame * CFrame.Angles(0, math.rad(45), 0)
+                workspace.CurrentCamera.CFrame = root.CFrame
+            end
+        end
+    end)
+end
+
+-- // MEJORAS DE OPTIMIZACIÓN Y GRACE // --
+
+local function fullBright()
+    pcall(function()
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    end)
+end
+
+local function graceGodMode()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            for _, v in ipairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanTouch = false end
+            end
+        end
+    end)
+end
+
+local function entityCleaner()
+    pcall(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and (obj.Name:find("Statue") or obj.Name:find("Monster") or obj.Name:find("Death")) then
+                obj:Destroy()
+            end
+        end
+    end)
+end
+
+-- // VENTANA PRINCIPAL // --
+local Window = Rayfield:CreateWindow({
+    Name = "AANN-GRACE | V1",
+    LoadingTitle = "PROTOCOLO DE CARGA...",
+    LoadingSubtitle = "by ROSAHN_DEV & AANN_DEV",
+    ConfigurationSaving = { Enabled = true, FolderName = "AANN_GRACE" },
+    KeySystem = true,
+    KeySettings = {
+        Title = "Validación de Usuario",
+        Subtitle = "Cargando componentes seguros...",
+        Note = "Mensaje: El acceso es privado.", -- Ya no dice la key
+        SaveKey = true,
+        Key = {"AANN_DEV"}
+    }
+})
+
+local MainTab = Window:CreateTab("Automatización", "home")
+local CombatTab = Window:CreateTab("Protección", "shield")
+local WorldTab = Window:CreateTab("Mundo", "map")
+local ServerTab = Window:CreateTab("Servidor", "server")
+
+-- // AUTOMATIZACIÓN // --
+MainTab:CreateSection("Sistemas de Sala")
+
+MainTab:CreateToggle({
+    Name = "❌ Grace Reprieve Bypass ❌",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            PlayEffect(Sound_On)
+            hbGrace1 = RunService.Heartbeat:Connect(original_grace)
+            SmartNotify("ACTIVO", "Limpieza de remotos asesinos iniciada.")
+        else
+            if hbGrace1 then hbGrace1:Disconnect() end
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Grace Regular [NORMAL/ZEN]",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            PlayEffect(Sound_On)
+            hbGrace2 = RunService.Heartbeat:Connect(original_grace2)
+            SmartNotify("ACTIVO", "Secuencia de salas automáticas.")
+        else
+            if hbGrace2 then hbGrace2:Disconnect() end
+        end
+    end,
+})
+
+-- // PROTECCIÓN // --
+CombatTab:CreateSection("Bypass de Entidades")
+
+CombatTab:CreateToggle({
+    Name = "God Mode (Anti-Estatuas)",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            PlayEffect(Sound_On)
+            hbGodMode = RunService.Heartbeat:Connect(graceGodMode)
+            SmartNotify("DEFENSA", "Las estatuas ahora te ignoran.")
+        else
+            if hbGodMode then hbGodMode:Disconnect() end
+        end
+    end,
+})
+
+CombatTab:CreateToggle({
+    Name = "Auto-Borrar Peligros",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            PlayEffect(Sound_On)
+            hbEntity = RunService.Heartbeat:Connect(entityCleaner)
+            SmartNotify("LIMPIEZA", "Buscando modelos peligrosos...")
+        else
+            if hbEntity then hbEntity:Disconnect() end
+        end
+    end,
+})
+
+-- // MUNDO // --
+WorldTab:CreateSection("Visuales & FPS")
+
+WorldTab:CreateToggle({
+    Name = "Full Bright (Sin Oscuridad)",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            PlayEffect(Sound_On)
+            hbFullBright = RunService.Heartbeat:Connect(fullBright)
+            SmartNotify("ILUMINACIÓN", "Oscuridad eliminada.")
+        else
+            if hbFullBright then hbFullBright:Disconnect() end
+        end
+    end,
+})
+
+WorldTab:CreateButton({
+    Name = "Optimizar FPS (Super Boost)",
+    Callback = function()
+        for _, v in ipairs(game:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Material = Enum.Material.SmoothPlastic
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v:Destroy()
+            end
+        end
+        SmartNotify("OPTIMIZACIÓN", "Texturas eliminadas para subir FPS.")
+    end,
+})
+
+-- // SERVIDOR // --
+ServerTab:CreateSection("Acciones de Juego")
+
+ServerTab:CreateButton({
+    Name = "Create OP Lobby Modifiers",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.CreateLobby:FireServer({
+                a=1, p=50, s=3,
+                m={ms={II=true,QU=true,Ep=4,ei=true,oq=true,uR=true,wT=true,TQ=true,rq=10,YQ=3,tr=true,rI=true,ii=3,UO=true,CS=3,IR=true,RO=true,Ty=true,qi=true,im=true,Op=true,tQ=true,pe=true,iP=true,uY=true,MI=true,uy=true,Qr=true,iu=true,ir=true,KA=2,QP=true,WR=true,rt=true,TP=true,Ou=true,UT=5,yw=true,pp=true,To=true,Qi=true,Rw=true,Wt=true,Up=true,Er=true,uu=true,qY=true,RF=true,DR=true,PW=true,HE=true,it=true,iS=true,yE=true,wy=true,eW=3}, vav=false, v=false},
+                _m=1, c=1
+            })
+            SmartNotify("SERVER", "Lobby OP creado.")
+        end)
+    end,
+})
+
+ServerTab:CreateButton({
+    Name = "Obtener Medallas",
+    Callback = function()
+        SmartNotify("API", "Ejecutando Badge Grabber...")
+    end,
+})
+
+ServerTab:CreateSection("Créditos")
+ServerTab:CreateLabel("Dev Principal: ROSAHN_DEV")
+ServerTab:CreateLabel("Sistemas: AANN_DEV")
+
+SmartNotify("AANN-GRACE", "Iniciado con Protocolo Neón")
